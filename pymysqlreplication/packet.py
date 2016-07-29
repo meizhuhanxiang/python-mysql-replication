@@ -44,7 +44,7 @@ class BinLogPacketWrapper(object):
         constants.WRITE_ROWS_EVENT_V2: row_event.WriteRowsEvent,
         constants.DELETE_ROWS_EVENT_V2: row_event.DeleteRowsEvent,
         constants.TABLE_MAP_EVENT: row_event.TableMapEvent,
-        #5.6 GTID enabled replication events
+        # 5.6 GTID enabled replication events
         constants.ANONYMOUS_GTID_LOG_EVENT: event.NotImplementedEvent,
         constants.PREVIOUS_GTIDS_LOG_EVENT: event.NotImplementedEvent
 
@@ -93,9 +93,9 @@ class BinLogPacketWrapper(object):
             return
         self.event = event_class(self, event_size_without_header, table_map,
                                  ctl_connection,
-                                 only_tables = only_tables,
-                                 only_schemas = only_schemas,
-                                 freeze_schema = freeze_schema)
+                                 only_tables=only_tables,
+                                 only_schemas=only_schemas,
+                                 freeze_schema=freeze_schema)
         if self.event._processed == False:
             self.event = None
 
@@ -266,16 +266,16 @@ class BinLogPacketWrapper(object):
     def unpack_int24(self, n):
         try:
             return struct.unpack('B', n[0])[0] \
-                + (struct.unpack('B', n[1])[0] << 8) \
-                + (struct.unpack('B', n[2])[0] << 16)
+                   + (struct.unpack('B', n[1])[0] << 8) \
+                   + (struct.unpack('B', n[2])[0] << 16)
         except TypeError:
             return n[0] + (n[1] << 8) + (n[2] << 16)
 
     def unpack_int32(self, n):
         try:
             return struct.unpack('B', n[0])[0] \
-                + (struct.unpack('B', n[1])[0] << 8) \
-                + (struct.unpack('B', n[2])[0] << 16) \
-                + (struct.unpack('B', n[3])[0] << 24)
+                   + (struct.unpack('B', n[1])[0] << 8) \
+                   + (struct.unpack('B', n[2])[0] << 16) \
+                   + (struct.unpack('B', n[3])[0] << 24)
         except TypeError:
             return n[0] + (n[1] << 8) + (n[2] << 16) + (n[3] << 24)

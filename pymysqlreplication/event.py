@@ -8,9 +8,9 @@ from pymysql.util import byte2int, int2byte
 
 class BinLogEvent(object):
     def __init__(self, from_packet, event_size, table_map, ctl_connection,
-                 only_tables = None,
-                 only_schemas = None,
-                 freeze_schema = False):
+                 only_tables=None,
+                 only_schemas=None,
+                 freeze_schema=False):
         self.packet = from_packet
         self.table_map = table_map
         self.event_type = self.packet.event_type
@@ -29,26 +29,36 @@ class BinLogEvent(object):
         return struct.unpack('<Q', table_id)[0]
 
     def dump(self):
-        print("=== %s ===" % (self.__class__.__name__))
-        print("Date: %s" % (datetime.datetime.fromtimestamp(self.timestamp)
-                            .isoformat()))
-        print("Log position: %d" % self.packet.log_pos)
-        print("Event size: %d" % (self.event_size))
-        print("Read bytes: %d" % (self.packet.read_bytes))
-        self._dump()
-        print()
+        dump_res = {
+            'event': self.__class__.__name__,
+            'date': datetime.datetime.fromtimestamp(self.timestamp).isoformat(),
+            'log_postition': self.packet.log_pos,
+            'event_size': self.event_size,
+            'read_bytes': self.packet.read_bytes
+        }
+        if self.__class__.__name__ in ['WriteRowsEvent', 'DeleteRowsEvent', 'UpdateRowsEvent']:
+            for row in self._dump():
+                res = dict(dump_res, **row)
+                yield res
+        else:
+            _dump_res = self._dump()
+            if not _dump_res:
+                _dump_res = {}
+            res = dict(dump_res, **_dump_res)
+            yield res
 
     def _dump(self):
         """Core data dumped for the event"""
-        pass
+        return {}
 
 
 class GtidEvent(BinLogEvent):
     """GTID change in binlog event
     """
+
     def __init__(self, from_packet, event_size, table_map, ctl_connection, **kwargs):
         super(GtidEvent, self).__init__(from_packet, event_size, table_map,
-                                          ctl_connection, **kwargs)
+                                        ctl_connection, **kwargs)
 
         self.commit_flag = byte2int(self.packet.read(1)) == 1
         self.sid = self.packet.read(16)
@@ -59,14 +69,18 @@ class GtidEvent(BinLogEvent):
         """GTID = source_id:transaction_id
         Eg: 3E11FA47-71CA-11E1-9E33-C80AA9429562:23
         See: http://dev.mysql.com/doc/refman/5.6/en/replication-gtids-concepts.html"""
-        gtid = "%s%s%s%s-%s%s-%s%s-%s%s-%s%s%s%s%s%s" %\
+        gtid = "%s%s%s%s-%s%s-%s%s-%s%s-%s%s%s%s%s%s" % \
                tuple("{0:02x}".format(ord(c)) for c in self.sid)
         gtid += ":%d" % self.gno
         return gtid
 
     def _dump(self):
-        print("Commit: %s" % self.commit_flag)
-        print("GTID_NEXT: %s" % self.gtid)
+        res = {
+            'commit': self.commit_flag,
+            'gtid_next': self.gtid
+
+        }
+        return res
 
     def __repr__(self):
         return '<GtidEvent "%s">' % self.gtid
@@ -79,6 +93,7 @@ class RotateEvent(BinLogEvent):
         position: Position inside next binlog
         next_binlog: Name of next binlog file
     """
+
     def __init__(self, from_packet, event_size, table_map, ctl_connection, **kwargs):
         super(RotateEvent, self).__init__(from_packet, event_size, table_map,
                                           ctl_connection, **kwargs)
@@ -86,10 +101,12 @@ class RotateEvent(BinLogEvent):
         self.next_binlog = self.packet.read(event_size - 8).decode()
 
     def dump(self):
-        print("=== %s ===" % (self.__class__.__name__))
-        print("Position: %d" % self.position)
-        print("Next binlog file: %s" % self.next_binlog)
-        print()
+        res = {
+            'event': self.__class__.__name__,
+            'position': self.position,
+            'next_binlog': self.next_binlog
+        }
+        yield res
 
 
 class FormatDescriptionEvent(BinLogEvent):
@@ -114,12 +131,13 @@ class XidEvent(BinLogEvent):
 
     def _dump(self):
         super(XidEvent, self)._dump()
-        print("Transaction ID: %d" % (self.xid))
+        return {'transaction_id': self.xid}
 
 
 class QueryEvent(BinLogEvent):
     '''This evenement is trigger when a query is run of the database.
     Only replicated queries are logged.'''
+
     def __init__(self, from_packet, event_size, table_map, ctl_connection, **kwargs):
         super(QueryEvent, self).__init__(from_packet, event_size, table_map,
                                          ctl_connection, **kwargs)
@@ -138,13 +156,16 @@ class QueryEvent(BinLogEvent):
 
         self.query = self.packet.read(event_size - 13 - self.status_vars_length
                                       - self.schema_length - 1).decode("utf-8")
-        #string[EOF]    query
+        # string[EOF]    query
 
     def _dump(self):
         super(QueryEvent, self)._dump()
-        print("Schema: %s" % (self.schema))
-        print("Execution time: %d" % (self.execution_time))
-        print("Query: %s" % (self.query))
+        res = {
+            'schema': self.schema,
+            'execution_time': self.execution_time,
+            'query': self.query,
+        }
+        return res
 
 
 class BeginLoadQueryEvent(BinLogEvent):
@@ -154,9 +175,10 @@ class BeginLoadQueryEvent(BinLogEvent):
         file_id
         block-data
     """
+
     def __init__(self, from_packet, event_size, table_map, ctl_connection, **kwargs):
         super(BeginLoadQueryEvent, self).__init__(from_packet, event_size, table_map,
-                                                     ctl_connection, **kwargs)
+                                                  ctl_connection, **kwargs)
 
         # Payload
         self.file_id = self.packet.read_uint32()
@@ -164,8 +186,11 @@ class BeginLoadQueryEvent(BinLogEvent):
 
     def _dump(self):
         super(BeginLoadQueryEvent, self)._dump()
-        print("File id: %d" % (self.file_id))
-        print("Block data: %s" % (self.block_data))
+        res = {
+            'file_id': self.file_id,
+            'block_data': self.block_data
+        }
+        return res
 
 
 class ExecuteLoadQueryEvent(BinLogEvent):
@@ -183,9 +208,10 @@ class ExecuteLoadQueryEvent(BinLogEvent):
         end_pos
         dup_handling_flags
     """
+
     def __init__(self, from_packet, event_size, table_map, ctl_connection, **kwargs):
         super(ExecuteLoadQueryEvent, self).__init__(from_packet, event_size, table_map,
-                                                        ctl_connection, **kwargs)
+                                                    ctl_connection, **kwargs)
 
         # Post-header
         self.slave_proxy_id = self.packet.read_uint32()
@@ -202,15 +228,18 @@ class ExecuteLoadQueryEvent(BinLogEvent):
 
     def _dump(self):
         super(ExecuteLoadQueryEvent, self)._dump()
-        print("Slave proxy id: %d" % (self.slave_proxy_id))
-        print("Execution time: %d" % (self.execution_time))
-        print("Schema length: %d" % (self.schema_length))
-        print("Error code: %d" % (self.error_code))
-        print("Status vars length: %d" % (self.status_vars_length))
-        print("File id: %d" % (self.file_id))
-        print("Start pos: %d" % (self.start_pos))
-        print("End pos: %d" % (self.end_pos))
-        print("Dup handling flags: %d" % (self.dup_handling_flags))
+        res = {
+            'slave_proxy_id': self.slave_proxy_id,
+            'execution_time': self.execution_time,
+            'schema_length': self.schema_length,
+            'error_code': self.error_code,
+            'status_vars_length': self.status_vars_length,
+            'file_id': self.file_id,
+            'start_pos': self.start_pos,
+            'end_pos': self.end_pos,
+            'dup_handling_flags': self.dup_handling_flags
+        }
+        return res
 
 
 class IntvarEvent(BinLogEvent):
@@ -220,6 +249,7 @@ class IntvarEvent(BinLogEvent):
         type
         value
     """
+
     def __init__(self, from_packet, event_size, table_map, ctl_connection, **kwargs):
         super(IntvarEvent, self).__init__(from_packet, event_size, table_map,
                                           ctl_connection, **kwargs)
@@ -230,8 +260,11 @@ class IntvarEvent(BinLogEvent):
 
     def _dump(self):
         super(IntvarEvent, self)._dump()
-        print("type: %d" % (self.type))
-        print("Value: %d" % (self.value))
+        res = {
+            'type': self.type,
+            'value': self.value
+        }
+        return res
 
 
 class NotImplementedEvent(BinLogEvent):

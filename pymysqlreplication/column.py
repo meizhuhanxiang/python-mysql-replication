@@ -38,10 +38,10 @@ class Column(object):
         elif self.type == FIELD_TYPE.TIME2:
             self.fsp = packet.read_uint8()
         elif self.type == FIELD_TYPE.TINY and \
-                column_schema["COLUMN_TYPE"] == "tinyint(1)":
+                        column_schema["COLUMN_TYPE"] == "tinyint(1)":
             self.type_is_bool = True
         elif self.type == FIELD_TYPE.VAR_STRING or \
-                self.type == FIELD_TYPE.STRING:
+                        self.type == FIELD_TYPE.STRING:
             self.__read_string_metadata(packet, column_schema)
         elif self.type == FIELD_TYPE.BLOB:
             self.length_size = packet.read_uint8()
@@ -65,15 +65,15 @@ class Column(object):
             self.__read_enum_metadata(column_schema)
         else:
             self.max_length = (((metadata >> 4) & 0x300) ^ 0x300) \
-                + (metadata & 0x00ff)
+                              + (metadata & 0x00ff)
 
     def __read_enum_metadata(self, column_schema):
         enums = column_schema["COLUMN_TYPE"]
         if self.type == FIELD_TYPE.ENUM:
-            self.enum_values = enums.replace('enum(', '')\
+            self.enum_values = enums.replace('enum(', '') \
                 .replace(')', '').replace('\'', '').split(',')
         else:
-            self.set_values = enums.replace('set(', '')\
+            self.set_values = enums.replace('set(', '') \
                 .replace(')', '').replace('\'', '').split(',')
 
     def __eq__(self, other):

@@ -31,7 +31,6 @@ MYSQL_EXPECTED_ERROR_CODES = [2013, 2006]
 
 
 class ReportSlave(object):
-
     """Represent the values that you may report when connecting as a slave
     to a master. SHOW SLAVE HOSTS related"""
 
@@ -66,8 +65,8 @@ class ReportSlave(object):
             self.hostname = value
 
     def __repr__(self):
-        return '<ReportSlave hostname=%s username=%s password=%s port=%d>' %\
-            (self.hostname, self.username, self.password, self.port)
+        return '<ReportSlave hostname=%s username=%s password=%s port=%d>' % \
+               (self.hostname, self.username, self.password, self.port)
 
     def encoded(self, server_id, master_id=0):
         """
@@ -121,7 +120,6 @@ class ReportSlave(object):
 
 
 class BinLogStreamReader(object):
-
     """Connect to replication stream and read event
     """
     report_slave = None
@@ -270,7 +268,7 @@ class BinLogStreamReader(object):
                 cur.close()
 
             prelude = struct.pack('<i', len(self.log_file) + 11) \
-                + int2byte(COM_BINLOG_DUMP)
+                      + int2byte(COM_BINLOG_DUMP)
 
             if self.__resume_stream:
                 prelude += struct.pack('<I', self.log_pos)
@@ -329,7 +327,7 @@ class BinLogStreamReader(object):
                            4)  # encoded_data_size
 
             prelude = b'' + struct.pack('<i', header_size + encoded_data_size) \
-                + int2byte(COM_BINLOG_DUMP_GTID)
+                      + int2byte(COM_BINLOG_DUMP_GTID)
 
             # binlog_flags = 0 (2 bytes)
             prelude += struct.pack('<H', 0)
@@ -394,7 +392,7 @@ class BinLogStreamReader(object):
                 continue
 
             if binlog_event.event_type == TABLE_MAP_EVENT and \
-                    binlog_event.event is not None:
+                            binlog_event.event is not None:
                 self.table_map[binlog_event.event.table_id] = \
                     binlog_event.event.get_table()
 

@@ -14,6 +14,7 @@ from .column import Column
 from .table import Table
 from .bitmap import BitCount, BitGet
 
+
 class RowsEvent(BinLogEvent):
     def __init__(self, from_packet, event_size, table_map, ctl_connection, **kwargs):
         super(RowsEvent, self).__init__(from_packet, event_size, table_map,
@@ -22,7 +23,7 @@ class RowsEvent(BinLogEvent):
         self.__only_tables = kwargs["only_tables"]
         self.__only_schemas = kwargs["only_schemas"]
 
-        #Header
+        # Header
         self.table_id = self._read_table_id()
 
         # Additional information
@@ -30,7 +31,7 @@ class RowsEvent(BinLogEvent):
             self.primary_key = table_map[self.table_id].data["primary_key"]
             self.schema = self.table_map[self.table_id].schema
             self.table = self.table_map[self.table_id].table
-        except KeyError: #If we have filter the corresponding TableMap Event
+        except KeyError:  # If we have filter the corresponding TableMap Event
             self._processed = False
             return
 
@@ -42,16 +43,16 @@ class RowsEvent(BinLogEvent):
             return
 
 
-        #Event V2
+        # Event V2
         if self.event_type == BINLOG.WRITE_ROWS_EVENT_V2 or \
-                self.event_type == BINLOG.DELETE_ROWS_EVENT_V2 or \
-                self.event_type == BINLOG.UPDATE_ROWS_EVENT_V2:
-                self.flags, self.extra_data_length = struct.unpack('<HH', self.packet.read(4))
-                self.extra_data = self.packet.read(self.extra_data_length / 8)
+                        self.event_type == BINLOG.DELETE_ROWS_EVENT_V2 or \
+                        self.event_type == BINLOG.UPDATE_ROWS_EVENT_V2:
+            self.flags, self.extra_data_length = struct.unpack('<HH', self.packet.read(4))
+            self.extra_data = self.packet.read(self.extra_data_length / 8)
         else:
             self.flags = struct.unpack('<H', self.packet.read(2))[0]
 
-        #Body
+        # Body
         self.number_of_columns = self.packet.read_length_coded_binary()
         self.columns = self.table_map[self.table_id].columns
 
@@ -64,7 +65,7 @@ class RowsEvent(BinLogEvent):
             bit = ord(bit)
         return bit & (1 << (position % 8))
 
-    def _read_column_data(self,  cols_bitmap):
+    def _read_column_data(self, cols_bitmap):
         """Use for WRITE, UPDATE and DELETE events.
         Return an array of column data
         """
@@ -112,7 +113,7 @@ class RowsEvent(BinLogEvent):
             elif column.type == FIELD_TYPE.DOUBLE:
                 values[name] = struct.unpack("<d", self.packet.read(8))[0]
             elif column.type == FIELD_TYPE.VARCHAR or \
-                    column.type == FIELD_TYPE.STRING:
+                            column.type == FIELD_TYPE.STRING:
                 if column.max_length > 255:
                     values[name] = self.__read_string(2, column)
                 else:
@@ -377,25 +378,25 @@ class RowsEvent(BinLogEvent):
         return binary & mask
 
     def _dump(self):
-        super(RowsEvent, self)._dump()
-        print("Table: %s.%s" % (self.schema, self.table))
-        print("Affected columns: %d" % self.number_of_columns)
-        print("Changed rows: %d" % (len(self.rows)))
+        _dump_res = super(RowsEvent, self)._dump()
+        _dump_res['schema'] = self.schema
+        _dump_res['table'] = self.table
+        _dump_res['affected_columns'] = self.number_of_columns
+        for row in self.rows():
+            _dump_res['row'] = row
+            yield _dump_res
 
     def _fetch_rows(self):
         self.__rows = []
-
         if not self.complete:
             return
-
         while self.packet.read_bytes + 1 < self.event_size:
-            self.__rows.append(self._fetch_one_row())
+            yield self._fetch_one_row()
 
-    @property
     def rows(self):
         if self.__rows is None:
-            self._fetch_rows()
-        return self.__rows
+            for row in self._fetch_rows():
+                yield row
 
 
 class DeleteRowsEvent(RowsEvent):
@@ -417,14 +418,6 @@ class DeleteRowsEvent(RowsEvent):
         row["values"] = self._read_column_data(self.columns_present_bitmap)
         return row
 
-    def _dump(self):
-        super(DeleteRowsEvent, self)._dump()
-        print("Values:")
-        for row in self.rows:
-            print("--")
-            for key in row["values"]:
-                print("*", key, ":", row["values"][key])
-
 
 class WriteRowsEvent(RowsEvent):
     """This event is triggered when a row in database is added
@@ -445,7 +438,7 @@ class WriteRowsEvent(RowsEvent):
         row["values"] = self._read_column_data(self.columns_present_bitmap)
         return row
 
-    def _dump(self):
+    def _dumps(self):
         super(WriteRowsEvent, self)._dump()
         print("Values:")
         for row in self.rows:
@@ -469,7 +462,7 @@ class UpdateRowsEvent(RowsEvent):
         super(UpdateRowsEvent, self).__init__(from_packet, event_size,
                                               table_map, ctl_connection, **kwargs)
         if self._processed:
-            #Body
+            # Body
             self.columns_present_bitmap = self.packet.read(
                 (self.number_of_columns + 7) / 8)
             self.columns_present_bitmap2 = self.packet.read(
@@ -477,13 +470,11 @@ class UpdateRowsEvent(RowsEvent):
 
     def _fetch_one_row(self):
         row = {}
-
         row["before_values"] = self._read_column_data(self.columns_present_bitmap)
-
         row["after_values"] = self._read_column_data(self.columns_present_bitmap2)
         return row
 
-    def _dump(self):
+    def _dumps(self):
         super(UpdateRowsEvent, self)._dump()
         print("Affected columns: %d" % self.number_of_columns)
         print("Values:")
@@ -575,7 +566,10 @@ class TableMapEvent(BinLogEvent):
 
     def _dump(self):
         super(TableMapEvent, self)._dump()
-        print("Table id: %d" % (self.table_id))
-        print("Schema: %s" % (self.schema))
-        print("Table: %s" % (self.table))
-        print("Columns: %s" % (self.column_count))
+        res = {
+            'table_id': self.table_id,
+            'schema': self.schema,
+            'table': self.table,
+            'columns': self.columns
+        }
+        return res
